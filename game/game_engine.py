@@ -10,12 +10,16 @@ class GameEngine:
 
         self.score = 0
         self.total_attempts = 0
+        self.streak = 0
         self.feedback_msg = "Solve the card and press Enter!"
         self.feedback_color = (200, 205, 215)
 
         self.num_a = 0
         self.num_b = 0
         self.operator = "+"
+        self.timer_duration = 10.0
+        self.time_remaining = self.timer_duration
+        self.last_update_time = pygame.time.get_ticks()
 
         box_w, box_h = 130, 44
         self.input_box = TextBox(width // 2 - 110, 230, box_w, box_h)
@@ -29,21 +33,36 @@ class GameEngine:
         self.generate_new_card()
 
     def generate_new_card(self):
-        self.num_a = random.randint(3, 15)
-        self.num_b = random.randint(2, 12)
-        self.operator = random.choice(["+", "-", "*"])
+        self.operator = random.choice(["+", "-", "*", "/"])
+        if self.operator == "/":
+            self.num_b = random.randint(2, 7)
+            quotient = random.randint(2, 15 // self.num_b)
+            self.num_a = self.num_b * quotient
+        else:
+            self.num_a = random.randint(3, 15)
+            self.num_b = random.randint(2, 12)
         if self.operator == "-" and self.num_a < self.num_b:
             self.num_a, self.num_b = self.num_b, self.num_a
 
         self.input_box.clear()
+        self.time_remaining = self.timer_duration
+        self.last_update_time = pygame.time.get_ticks()
 
     def compute_expected_answer(self):
-        
-        # BUG SYMPTOM: 
-        # Operands are combined as strings instead of evaluated with mathematical operations.
-        return int(f"{self.num_a}{self.num_b}")
+        if self.operator == "+":
+            return self.num_a + self.num_b
+        elif self.operator == "-":
+            return self.num_a - self.num_b
+        elif self.operator == "*":
+            return self.num_a * self.num_b
+        elif self.operator == "/":
+            return self.num_a // self.num_b
+        raise ValueError(f"Unsupported operator: {self.operator}")
 
     def submit_answer(self):
+        if self.update():
+            return
+
         val_str = self.input_box.text.strip()
         if not val_str or val_str == "-":
             self.feedback_msg = "Type an answer first!"
@@ -55,11 +74,19 @@ class GameEngine:
         self.total_attempts += 1
 
         if user_answer == expected:
-            self.score += 1
+            self.streak += 1
+            if self.streak >= 5:
+                multiplier = 3
+            elif self.streak >= 3:
+                multiplier = 2
+            else:
+                multiplier = 1
+            self.score += multiplier
             self.feedback_msg = f"CORRECT! {self.num_a} {self.operator} {self.num_b} = {expected}"
             self.feedback_color = (80, 230, 110)
             self.generate_new_card()
         else:
+            self.streak = 0
             self.feedback_msg = f"WRONG! Expected {expected}."
             self.feedback_color = (240, 75, 75)
             self.input_box.clear()
@@ -74,7 +101,19 @@ class GameEngine:
                 self.submit_answer()
 
     def update(self):
-        pass
+        current_time = pygame.time.get_ticks()
+        delta_time = (current_time - self.last_update_time) / 1000
+        self.last_update_time = current_time
+        self.time_remaining = max(0, self.time_remaining - delta_time)
+
+        if self.time_remaining == 0:
+            self.total_attempts += 1
+            self.streak = 0
+            self.feedback_msg = "TIME'S UP!"
+            self.feedback_color = (240, 75, 75)
+            self.generate_new_card()
+            return True
+        return False
 
     def render(self, screen):
         screen.fill((25, 29, 37))
@@ -92,6 +131,13 @@ class GameEngine:
         card_str = f"{self.num_a}  {self.operator}  {self.num_b}"
         card_surf = self.font_card.render(card_str, True, (25, 30, 42))
         screen.blit(card_surf, (card_rect.centerx - card_surf.get_width() // 2, card_rect.centery - card_surf.get_height() // 2))
+
+        timer_rect = pygame.Rect(card_rect.left, card_rect.bottom + 8, card_rect.width, 8)
+        pygame.draw.rect(screen, (55, 62, 75), timer_rect, border_radius=4)
+        timer_width = int(timer_rect.width * self.time_remaining / self.timer_duration)
+        if timer_width > 0:
+            timer_fill = pygame.Rect(timer_rect.left, timer_rect.top, timer_width, timer_rect.height)
+            pygame.draw.rect(screen, (80, 230, 110), timer_fill, border_radius=4)
 
         self.input_box.render(screen)
 
